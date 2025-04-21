@@ -1,0 +1,8 @@
+# 重いファイルや不要な一時ファイルを除外
+*.xyz
+*.las
+*.zip
+
+# PythonやVSCodeが作るゴミ
+__pycache__/
+.vscode/
