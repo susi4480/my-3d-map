@@ -10,7 +10,7 @@ import open3d as o3d
 folder_path = r"C:\Users\user\Documents\lab\data\las2"
 z_limit = 10.0        # 高さ上限
 normal_z_threshold = 0.3  # 法線のZ成分がこの値以下 → 壁とみなす
-output_filename = "wall_candidate_by_normal.ply"
+output_filename = "wall_candidate2.ply"
 
 # ============================
 # Step1: .lasファイルを全部読み込み

@@ -4,7 +4,7 @@
 folder_path = r"C:\Users\user\Documents\lab\data\las2"
 z_limit = 10.0         # ★ 高さ制限10mに拡大
 z_diff_threshold = 1.0  # ★ Z差しきい値を0.5mに緩和
-output_filename = "wall_candidate.ply"
+output_filename = "wall_candidate1.ply"
 
 # ============================
 # Step1～Step4（同じ）
