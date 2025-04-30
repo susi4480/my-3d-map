@@ -1,65 +1,65 @@
+# 必要なライブラリをインポート
 import os
 import laspy
 import numpy as np
 import open3d as o3d
-from sklearn.cluster import DBSCAN
 
-# --- 設定 ---
-las_folder = r"C:\Users\user\Documents\lab\data\las2"
-z_limit = 10.0
-eps = 1.0
-min_samples = 20
-z_range_thresh = 1.5      # Z方向の高低差 → 壁らしさ
-thickness_thresh = 1.0    # 壁の厚み（XかY方向のどちらかがこれ以下）
-output_ply = "wall_candidate3.ply"
+# ============================
+　
+# ============================
+folder_path = r"C:\Users\user\Documents\lab\data\las2"
+z_limit = 10.0        # 高さ上限
+normal_z_threshold = 0.3  # 法線のZ成分がこの値以下 → 壁とみなす
+output_filename = "wall_candidate2.ply"
 
-# --- Step1: .las読み込み + 高さフィルタ ---
-print("[1] .lasファイルを読み込み中...")
-las_files = [f for f in os.listdir(las_folder) if f.endswith(".las")]
-points_all = []
+# ============================
+# Step1: .lasファイルを全部読み込み
+# ============================
+print("\n[Step1] .lasファイルを読み込み中...")
+las_files = [f for f in os.listdir(folder_path) if f.endswith(".las")]
+all_points = []
 
 for file in las_files:
-    with laspy.open(os.path.join(las_folder, file)) as f:
-        las = f.read()
-        pts = np.vstack((las.x, las.y, las.z)).T
-        points_all.append(pts)
+    path = os.path.join(folder_path, file)
+    las = laspy.read(path)
+    points = np.vstack((las.x, las.y, las.z)).T
+    all_points.append(points)
 
-points = np.vstack(points_all)
-points = points[points[:, 2] < z_limit]
+all_points = np.vstack(all_points)
+print(f"読み込んだ点数: {all_points.shape[0]}点")
 
-# --- Step2: DBSCANクラスタリング ---
-print("[2] DBSCANクラスタリング...")
-dbscan = DBSCAN(eps=eps, min_samples=min_samples)
-labels = dbscan.fit_predict(points)
-unique_labels = np.unique(labels)
-print(f"クラスタ数（-1除く）: {len(unique_labels[unique_labels != -1])}")
+# ============================
+# Step2: 高さフィルタリング
+# ============================
+print("\n[Step2] 高さフィルタリング中...")
+mask = all_points[:, 2] < z_limit
+filtered_points = all_points[mask]
+print(f"フィルタ後の点数: {filtered_points.shape[0]}点")
 
-# --- Step3: 壁候補抽出（Z範囲 + 厚みで判定）---
-print("[3] 壁候補を抽出中...")
-wall_mask = np.zeros(points.shape[0], dtype=bool)
-
-for lbl in unique_labels:
-    if lbl == -1:
-        continue
-    cluster = points[labels == lbl]
-    z_range = cluster[:, 2].max() - cluster[:, 2].min()
-    x_range = cluster[:, 0].ptp()
-    y_range = cluster[:, 1].ptp()
-
-    # 高さがあり、厚みが薄い（XまたはYが細長い）
-    if z_range >= z_range_thresh and (x_range <= thickness_thresh or y_range <= thickness_thresh):
-        wall_mask[labels == lbl] = True
-
-print(f"壁候補点数: {np.sum(wall_mask)} / {points.shape[0]}")
-
-# --- Step4: 可視化・出力 ---
-colors = np.zeros_like(points)
-colors[wall_mask] = [1, 0, 0]
-colors[~wall_mask] = [0.5, 0.5, 0.5]
-
+# ============================
+# Step3: 法線ベクトルを推定
+# ============================
+print("\n[Step3] 法線ベクトルを計算中...")
 pcd = o3d.geometry.PointCloud()
-pcd.points = o3d.utility.Vector3dVector(points)
+pcd.points = o3d.utility.Vector3dVector(filtered_points)
+pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=1.0, max_nn=30))
+normals = np.asarray(pcd.normals)
+
+# ============================
+# Step4: 法線のZ成分が小さい（= 壁っぽい）点だけ抽出
+# ============================
+print("\n[Step4] 法線Z成分による壁候補抽出...")
+wall_mask = np.abs(normals[:, 2]) < normal_z_threshold
+print(f"壁候補点数: {np.sum(wall_mask)}点")
+
+colors = np.zeros((filtered_points.shape[0], 3))
+colors[wall_mask] = [1, 0, 0]       # 壁候補→赤
+colors[~wall_mask] = [0.5, 0.5, 0.5] # その他→灰色
+
 pcd.colors = o3d.utility.Vector3dVector(colors)
 
-o3d.io.write_point_cloud(output_ply, pcd)
-print(f"[完了] 出力ファイル: {output_ply}")
+# ============================
+# Step5: 書き出し
+# ============================
+o3d.io.write_point_cloud(output_filename, pcd)
+print(f"\n出力完了！ファイル名: {output_filename}")
