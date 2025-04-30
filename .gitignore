@@ -7,6 +7,7 @@ __pycache__/
 *.pyd
 *.log
 *.zip
+*.ply
 
 # Jupyter
 .ipynb_checkpoints/
