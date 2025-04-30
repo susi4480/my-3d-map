@@ -1,8 +1,16 @@
-# 重いファイルや不要な一時ファイルを除外
-*.xyz
-*.las
+# 仮想環境など
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
 *.zip
 
-# PythonやVSCodeが作るゴミ
-__pycache__/
+# Jupyter
+.ipynb_checkpoints/
+
+# OSやIDEの設定
+.DS_Store
 .vscode/
