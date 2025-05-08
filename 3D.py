@@ -4,7 +4,7 @@ import numpy as np
 import open3d as o3d
 
 # フォルダパス（すべての.lasファイル対象）
-folder_path = r"C:\Users\owner\ドキュメント\研究１\lasデータ"
+folder_path = r"C:\Users\user\Documents\lab\data\las2"
 
 # Z値の異常除去フィルタ（極端な値のみ除外）
 z_min, z_max = -1e6, 1e6  # 実際の川底～ビル上くらいまでの幅に設定

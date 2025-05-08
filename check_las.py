@@ -3,7 +3,7 @@ import laspy
 import numpy as np
 
 # 対象フォルダ
-folder_path = r"C:\Users\owner\ドキュメント\研究１\lasデータ"
+folder_path = r"C:\Users\user\Documents\lab\data\las2"
 
 # .lasファイルをすべて取得
 las_files = [f for f in os.listdir(folder_path) if f.endswith(".las")]

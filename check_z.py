@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # フォルダパス
-folder_path = r"C:\Users\owner\ドキュメント\研究１\lasデータ"
+folder_path = r"C:\Users\user\Documents\lab\data\las2"
 
 # 読み込みファイルをリストアップ（.lasすべて）
 las_files = [f for f in os.listdir(folder_path) if f.endswith(".las")]
