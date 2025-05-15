@@ -4,13 +4,14 @@ import numpy as np
 import open3d as o3d
 
 # --- 設定 ---
-las_folder = r"C:\Users\user\Documents\lab\data\las2"  # 複数.las対応
-z_limit = 10.0                    # Z制限（地面より上のみ使用）
-num_sectors = 90                 # XY平面の扇形数（6°刻み）
-num_rings = 20                   # 距離ごとのリング分割
-max_radius = 150.0               # 最大半径（処理対象）
-max_z_diff = 1.0                 # 地面候補点と周囲のZ差しきい値
-output_ply = "ground_candidate_patchwork2.ply"
+las_folder = r"C:\Users\user\Documents\lab\data\las2"
+z_limit = 10.0                    # 一旦Z=10まで読んで、後でZ<4.0で制限をかける
+z_ground_limit = 4.0             # ✅ 地面として使う最大高さ
+num_sectors = 90                 # 6度刻みの扇形分割
+num_rings = 20                   # 距離に基づくリング分割
+max_radius = 150.0               # 最大半径
+max_z_diff = 1.0                 # 地面とみなすZ差
+output_ply = "ground_candidate_patchwork2_zlimit4.0.ply"
 
 # --- Step1: 点群読み込み ---
 print("[1] .lasファイルを読み込み中...")
@@ -23,13 +24,13 @@ for fname in os.listdir(las_folder):
         with laspy.open(path) as f:
             las = f.read()
             pts = np.vstack((las.x, las.y, las.z)).T
-            pts = pts[pts[:, 2] < z_limit]
+            pts = pts[pts[:, 2] < z_limit]  # 一旦広めに読んでおく
             points_all.append(pts)
 
 points = np.vstack(points_all)
-print(f"✅ 合計点数: {len(points)}点")
+print(f"✅ 合計点数（Z<{z_limit}）: {len(points)}点")
 
-# --- Step2: 中心を重心にしてリング・セクター分割 ---
+# --- Step2: センサ中心を点群重心とみなしてリング分割 ---
 center_xy = np.mean(points[:, :2], axis=0)
 xy = points[:, :2] - center_xy
 dists = np.linalg.norm(xy, axis=1)
@@ -53,7 +54,10 @@ for r in range(num_rings):
         global_idx = np.where(mask)[0][ground_zone]
         ground_mask[global_idx] = True
 
-print(f"✅ 地面点数: {np.sum(ground_mask)} / {len(points)}")
+# ✅ 高さ制限を適用（地面として認めるのは Z < 4.0）
+ground_mask = ground_mask & (points[:, 2] < z_ground_limit)
+
+print(f"✅ 地面点数（Z<{z_ground_limit}）: {np.sum(ground_mask)} / {len(points)}")
 
 # --- Step4: 色分け + 出力 ---
 colors = np.zeros_like(points)
