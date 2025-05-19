@@ -1,20 +1,29 @@
-import os
-import laspy
-import numpy as np
+import pandas as pd
 
-# 対象フォルダ
-folder_path = r"C:\Users\user\Documents\lab\data\las2"
+# === ファイルパス ===
+file_path = r"C:\Users\user\Documents\lab\data\ido\20211029_Marlin[multibeam]_20240625_TUMSAT LiDAR triai-20240627-121535(1)-R20250519-164056.xyz"
 
-# .lasファイルをすべて取得
-las_files = [f for f in os.listdir(folder_path) if f.endswith(".las")]
+try:
+    # === ファイル読み込み（空白またはタブ区切りに対応）===
+    df = pd.read_csv(file_path, delim_whitespace=True, header=None)
 
-# 各ファイルのZ値範囲を表示
-for fname in las_files:
-    fpath = os.path.join(folder_path, fname)
-    las = laspy.read(fpath)
-    z = las.z
+    # === 列数に応じてカラム名をつける（一般的なXYZ形式：X Y Z）===
+    col_count = df.shape[1]
+    if col_count >= 3:
+        df.columns = ['X', 'Y', 'Z'] + [f'col{i}' for i in range(4, col_count+1)]
+    else:
+        df.columns = [f'col{i}' for i in range(1, col_count+1)]
 
-    print(f"📁 {fname}")
-    print(f"    点数: {len(z)}")
-    print(f"    Z値の範囲: {np.min(z):.2f} ～ {np.max(z):.2f}")
-    print()
+    # === 最初の10行を表示して確認 ===
+    print("=== ファイルの先頭10行 ===")
+    print(df.head(10))
+
+    # === 数値範囲も確認 ===
+    if 'X' in df.columns and 'Y' in df.columns:
+        print(f"\n📍 Xの範囲: {df['X'].min()} ～ {df['X'].max()}")
+        print(f"📍 Yの範囲: {df['Y'].min()} ～ {df['Y'].max()}")
+    if 'Z' in df.columns:
+        print(f"📍 Zの範囲: {df['Z'].min()} ～ {df['Z'].max()}")
+
+except Exception as e:
+    print(f"❌ 読み込みエラー: {e}")
