@@ -5,7 +5,7 @@ import os
 import glob
 
 # === 設定 ===
-las_dir = r"C:\Users\user\Documents\lab\data\las_field"
+las_dir = r"C:\Users\user\Documents\lab\data\suidoubasi\floor"
 output_dir = os.path.join(las_dir, "poisson_final")
 os.makedirs(output_dir, exist_ok=True)
 
