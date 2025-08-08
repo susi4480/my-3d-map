@@ -1,0 +1,104 @@
+# -*- coding: utf-8 -*-
+"""
+【機能】
+- LASファイルをX方向に10m幅・2mオーバーラップでスライス
+- 各スライス内でZ方向に5cm間隔でスライス
+- 各Zスライス内でY方向ビットマップ化し、1に挟まれた0を航行可能空間に
+- 元点群（Z制限あり）＋航行空間点（緑）をLASで出力
+"""
+
+import numpy as np
+import laspy
+import os
+from tqdm import tqdm
+
+# === 入出力設定 ===
+INPUT_LAS = r"/output/0731_suidoubasi_ue.las"
+OUTPUT_LAS = r"/output/0804_overlap_.las"
+os.makedirs(os.path.dirname(OUTPUT_LAS), exist_ok=True)
+
+# === パラメータ ===
+X_WIDTH = 10.0     # Xスライス幅
+X_OVERLAP = 2.0    # Xオーバーラップ
+Z_RES = 0.05       # Zスライス厚
+Y_RES = 0.1        # Y方向分解能
+Z_LIMIT = 3.5      # Z制限
+
+# === LAS読み込みとZ制限 ===
+las = laspy.read(INPUT_LAS)
+pts = np.vstack([las.x, las.y, las.z]).T
+pts = pts[pts[:, 2] <= Z_LIMIT]
+if len(pts) == 0:
+    raise RuntimeError("⚠ Z制限内の点が存在しません")
+
+x_min, x_max = pts[:, 0].min(), pts[:, 0].max()
+y_min, y_max = pts[:, 1].min(), pts[:, 1].max()
+z_min, z_max = pts[:, 2].min(), Z_LIMIT
+
+y_bins = np.arange(y_min, y_max + Y_RES, Y_RES)
+z_bins = np.arange(z_min, z_max + Z_RES, Z_RES)
+
+green_pts = []
+
+# === X方向スライス処理 ===
+x_starts = np.arange(x_min, x_max, X_WIDTH - X_OVERLAP)
+
+for x0 in tqdm(x_starts, desc="Xスライス処理"):
+    x1 = x0 + X_WIDTH
+    block_mask = (pts[:, 0] >= x0) & (pts[:, 0] < x1)
+    block_pts = pts[block_mask]
+    if len(block_pts) == 0:
+        continue
+    x_fixed = np.mean(block_pts[:, 0])  # ブロックごとのX代表値
+
+    # === Zスライス処理 ===
+    for zi in range(len(z_bins) - 1):
+        z0, z1 = z_bins[zi], z_bins[zi + 1]
+        z_center = (z0 + z1) / 2
+        z_mask = (block_pts[:, 2] >= z0) & (block_pts[:, 2] < z1)
+        slice_pts = block_pts[z_mask]
+        if len(slice_pts) == 0:
+            continue
+
+        # === Yビットマップ作成 ===
+        bitmap = np.zeros(len(y_bins) - 1, dtype=np.uint8)
+        yi_indices = ((slice_pts[:, 1] - y_min) / Y_RES).astype(int)
+        yi_indices = yi_indices[(yi_indices >= 0) & (yi_indices < len(bitmap))]
+        bitmap[yi_indices] = 1
+
+        # === ギャップ抽出：1に挟まれた0
+        inside = False
+        gap_start = None
+        for yi in range(1, len(bitmap) - 1):
+            if bitmap[yi - 1] == 1 and bitmap[yi] == 0 and not inside:
+                inside = True
+                gap_start = yi
+            if inside and bitmap[yi] == 0 and bitmap[yi + 1] == 1:
+                for yj in range(gap_start, yi + 1):
+                    y_center = y_min + (yj + 0.5) * Y_RES
+                    green_pts.append([x_fixed, y_center, z_center])
+                inside = False
+
+# === 出力（元点群＋緑点） ===
+if green_pts:
+    green_pts = np.array(green_pts)
+    all_pts = np.vstack([pts, green_pts])
+    colors = np.zeros((len(all_pts), 3), dtype=np.uint16)
+    colors[:len(pts)] = np.array([0, 0, 0])        # 元点群：黒
+    colors[len(pts):] = np.array([0, 65535, 0])    # 航行可能空間：緑
+
+    header = laspy.LasHeader(point_format=3, version="1.2")
+    header.offsets = all_pts.min(axis=0)
+    header.scales = np.array([0.001, 0.001, 0.001])
+    las_out = laspy.LasData(header)
+    las_out.x = all_pts[:, 0]
+    las_out.y = all_pts[:, 1]
+    las_out.z = all_pts[:, 2]
+    las_out.red   = colors[:, 0]
+    las_out.green = colors[:, 1]
+    las_out.blue  = colors[:, 2]
+    las_out.write(OUTPUT_LAS)
+
+    print(f"✅ 出力完了：{OUTPUT_LAS}（緑点数: {len(green_pts)}）")
+else:
+    print("⚠ 航行可能空間が見つかりませんでした")

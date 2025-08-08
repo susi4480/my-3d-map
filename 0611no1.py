@@ -13,8 +13,8 @@ import numpy as np
 from pyproj import Transformer
 
 # === 設定 ===================================================================
-input_dir  = r"C:\Users\user\Documents\lab\data\suidoubasi\lidar_xyz_sita"
-output_xyz = r"C:\Users\user\Documents\lab\output_ply\lidar_xy_below3p5m.xyz"
+input_dir  = r"C:\Users\user\Documents\lab\data\suidoubasi\lidar_xyz_ue"
+output_xyz = r"C:\Users\user\Documents\lab\output_ply\0712_suidoubasi_lidar_ue_2D.xyz"
 
 z_threshold = 3.5                     # m
 utm_epsg    = "epsg:32654"            # UTM Zone 54N（東京湾周辺）
