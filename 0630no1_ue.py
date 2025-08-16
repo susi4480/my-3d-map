@@ -13,11 +13,11 @@ import laspy
 from scipy.spatial import cKDTree
 
 # === 設定 ===
-input_dir = r"C:\Users\user\Documents\lab\data\suidoubasi\floor_xyz_sita"
-output_las = r"C:\Users\user\Documents\lab\output_ply\0704_suidoubasi_floor_sita"
+input_dir = r"/data/fulldata/floor_ue_xyz/"
+output_las = r"/output/0725_suidoubasi_floor_ue.las"
 voxel_size = 0.25
 z_upper_limit = 3.0
-morph_radius = 18
+morph_radius = 20
 
 # === XYZ読み込み（NaN除去あり）===
 def load_xyz_files(directory):

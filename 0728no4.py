@@ -16,7 +16,7 @@ from scipy.spatial import cKDTree
 from skimage.morphology import binary_closing, disk
 
 # === 入出力設定 ===
-input_las = "/data/0704_suidoubasi_ue.las"
+input_las = "/output/0725_suidoubasi_ue.las"
 output_dir = "/output/slice_area_morphology/"
 os.makedirs(output_dir, exist_ok=True)
 

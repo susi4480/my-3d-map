@@ -15,22 +15,22 @@ import laspy
 import cv2
 
 # === 入出力 ===
-INPUT_LAS  = r"C:\Users\user\Documents\lab\output_ply\slice_area_ue\slice_x_387021.00m.las"
-OUTPUT_LAS = r"C:\Users\user\Documents\lab\output_ply\0808_integrated_slice_x_387021_rects_and_morph.las"
+INPUT_LAS  = r"C:\Users\user\Documents\lab\output_ply\slice_area_sita\slice_x_389177.50m.las"
+OUTPUT_LAS = r"C:\Users\user\Documents\lab\output_ply\0808_integrated_slice_x_389177_rects_and_morph.las"
 
 # === パラメータ ===
-Z_LIMIT          = 1.0
+Z_LIMIT          = 2.0
 GRID_RES         = 0.10
 # ▼ 水面高さベースの down-fill
 USE_ANCHOR_DOWNFILL = True
-ANCHOR_Z        = 0.35      # [m] 水面高さ
+ANCHOR_Z        = 1.9      # [m] 水面高さ
 ANCHOR_TOL      = 0.15     # [m] 近傍幅（±）
 # ▼ モルフォロジー
 MORPH_RADIUS     = 21      # 構造要素半径[セル]
 USE_MORPH_DIFF   = True    # クロージング差分セルも緑化
 # ▼ 長方形
 MIN_RECT_SIZE    = 5       # [セル]
-RECT_DIST_THRESHOLD = 5.0 # [m] 主長方形から遠い矩形は捨てる
+RECT_DIST_THRESHOLD = 30.0 # [m] 主長方形から遠い矩形は捨てる
 
 # === ユーティリティ：最大内接長方形（自由空間=True のbitmapに対して） ===
 def find_max_rectangle(bitmap: np.ndarray):

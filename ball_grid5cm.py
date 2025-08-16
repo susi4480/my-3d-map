@@ -4,7 +4,7 @@ import numpy as np
 import open3d as o3d
 
 # === 入出力設定 ===
-input_file = "/home/edu3/lab/data/pond/merged_pond.xyz"
+input_file = "/home/edu3/lab/data/0611_las2_full.las"
 output_dir = "/home/edu3/lab/output_strategy"
 os.makedirs(output_dir, exist_ok=True)
 
@@ -14,7 +14,7 @@ pcd = o3d.io.read_point_cloud(input_file)
 print(f"✅ 元の点数: {len(pcd.points):,}")
 
 # === 軽いダウンサンプリング ===
-voxel_size = 0.05  # ← 点数を多く残す（5 cm グリッド）
+voxel_size = 0.10  # ← 点数を多く残す（5 cm グリッド）
 pcd = pcd.voxel_down_sample(voxel_size=voxel_size)
 print(f"✅ ダウンサンプリング後点数: {len(pcd.points):,}")
 
@@ -31,6 +31,6 @@ mesh = o3d.geometry.TriangleMesh.create_from_point_cloud_ball_pivoting(
 )
 
 # === 出力 ===
-out_path = os.path.join(output_dir, "ball_pivoting_fine.ply")
+out_path = os.path.join(output_dir, "ball_pivoting_las2_full.ply")
 o3d.io.write_triangle_mesh(out_path, mesh)
 print(f"🎉 完了: メッシュ出力 -> {out_path}")

@@ -1,13 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-【機能（ワンパス統合）】
-1) 固定Y軸でスライス（幅 BIN_Y ）し、各スライス内の Z ≤ Z_LIMIT の点から X中央値を「中心点」として推定
+【機能（ワンパス統合 / A版）】
+1) 固定Y軸でスライス（幅 BIN_Y）し、各スライス内の Z ≤ Z_LIMIT の点から X中央値を「中心点」として推定
 2) スライス中心点をY順に連結し「中心線」を作成（任意で移動平均スムージング）
 3) 中心線の各点で接線→法線を求め、接線に垂直な厚み帯（±SLAB_THICK/2）で点群を抽出
 4) 帯内点を (法線N, Z) 平面にビットマップ化 → クロージング → 補間セルを緑点として s=0（中心線上）に配置
-5) 元点群（Z≤）＋緑点を統合して LAS 出力（元ヘッダのスケール/オフセット/CRS/VLRを継承、RGBは有無で分岐）
-
-【想定】川の向きがXYのどちらに傾いていても、Y固定スライスで中心線を作ってから「垂直帯」スライスで精緻化
+5) 元点群（Z≤）＋緑点を統合して LAS 出力（スケール/オフセット/SRS/VLR/EVLRを継承、RGBは有無で分岐）
 """
 
 import os
@@ -16,21 +14,21 @@ import laspy
 import cv2
 
 # === 入出力 ===
-INPUT_LAS  = r"C:\Users\user\Documents\lab\outcome\0731_suidoubasi_ue.las"
-OUTPUT_LAS = r"C:\Users\user\Documents\lab\output_las\0808_ybin_centerline_perp_10m_green.las"
+INPUT_LAS  = r"/data/0725_suidoubasi_sita.las"          # 実在する入力に修正可
+OUTPUT_LAS = r"/output/0808_ybin_centerline_perp_10m_green.las"
 
 # === パラメータ ===
 Z_LIMIT         = 3.5     # [m] これ以下の点のみ使用（橋上部除去など）
 BIN_Y           = 2.0     # [m] Y軸スライス幅
 MIN_PTS_PER_BIN = 50      # スライス内最低点数（満たさないと中心点スキップ）
-SMOOTH_WINDOW_M = 10.0    # [m] 中心線Xの移動平均窓（0で無効）→ ビン数に換算して使用
+SMOOTH_WINDOW_M = 10.0    # [m] 中心線Xの移動平均窓（0で無効）
 
 # 垂直スライス（帯）→ N-Zラスタ化・補間用
 SLAB_THICK    = 10.0      # [m] 接線方向の厚み（±SLAB_THICK/2）
 GRID_RES      = 0.10      # [m] N-Z平面ラスタ解像度
 MORPH_RADIUS  = 3         # [セル] クロージングの半径
 MIN_PIXELS    = 50        # ラスタ化後のユニーク画素数がこれ未満ならスキップ
-STEP_EVERY    = 1         # 中心線を何点おきに帯スライスするか（1=全点）
+STEP_EVERY    = 1         # 何点おきに帯スライスするか（1=全点）
 VERBOSE       = True
 
 KERNEL = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * MORPH_RADIUS + 1, 2 * MORPH_RADIUS + 1))
@@ -109,21 +107,37 @@ def tangents_normals_from_polyline(xy):
     return t, n
 
 def copy_header_with_metadata(src_header):
-    """元LASヘッダからスケール/オフセット/CRS/VLR等を継承したLasHeaderを返す"""
-    try:
-        header = src_header.copy()
-    except AttributeError:
-        header = laspy.LasHeader(point_format=src_header.point_format, version=src_header.version)
-        header.scales  = src_header.scales.copy()
-        header.offsets = src_header.offsets.copy()
-        header.vlrs  = list(getattr(src_header, "vlrs", []))
-        header.evlrs = list(getattr(src_header, "evlrs", []))
+    """
+    laspy 2.x 向けの安全なヘッダ継承:
+    - copy()は使わない
+    - scales/offsets/srs をそのまま継承
+    - vlrs/evlrs は None チェックしてから extend
+    """
+    header = laspy.LasHeader(point_format=src_header.point_format,
+                             version=src_header.version)
+    header.scales  = src_header.scales
+    header.offsets = src_header.offsets
+
+    if getattr(src_header, "srs", None):
+        header.srs = src_header.srs
+
+    src_vlrs = getattr(src_header, "vlrs", None)
+    if src_vlrs:
+        header.vlrs.extend(src_vlrs)
+
+    src_evlrs = getattr(src_header, "evlrs", None)
+    if src_evlrs:
+        header.evlrs.extend(src_evlrs)
+
     return header
 
 
 # === メイン ===
 def main():
-    os.makedirs(os.path.dirname(OUTPUT_LAS), exist_ok=True)
+    # 入力存在チェック & 出力Dir作成（空文字対策で or "."）
+    if not os.path.isfile(INPUT_LAS):
+        raise FileNotFoundError(f"INPUT_LAS not found: {INPUT_LAS}")
+    os.makedirs(os.path.dirname(OUTPUT_LAS) or ".", exist_ok=True)
 
     # 1) LAS読み込み
     las = laspy.read(INPUT_LAS)
@@ -133,7 +147,8 @@ def main():
     in_dims = set(las.point_format.dimension_names)
     has_rgb_in = {"red","green","blue"} <= in_dims
     if has_rgb_in:
-        rgb_all = np.vstack([las.red, las.green, las.blue]).T / 65535.0
+        # 0..65535 のまま扱い、最後にそのまま代入（緑点は16bit合成）
+        rgb_all = np.vstack([las.red, las.green, las.blue]).T
     else:
         rgb_all = None
 
@@ -146,7 +161,7 @@ def main():
         smooth_window_m=SMOOTH_WINDOW_M
     )
 
-    # 3) 緑点抽出のために、まずZ≤の点群だけ残す
+    # 3) Z≤ の点群だけ残す
     zmask = pts_all[:,2] <= Z_LIMIT
     pts   = pts_all[zmask]
     if has_rgb_in:
@@ -188,7 +203,7 @@ def main():
         if gw <= 1 or gh <= 1:
             continue
 
-        # 画素化
+        # 画素化（ユニーク画素で密度判定）
         ui = ((u_slab - u_min) / GRID_RES).astype(int)
         zi = ((z_slab - z_min) / GRID_RES).astype(int)
         ok = (zi >= 0) & (zi < gh) & (ui >= 0) & (ui < gw)
@@ -203,13 +218,13 @@ def main():
         grid = np.zeros((gh, gw), dtype=np.uint8)
         grid[uniq[:,0], uniq[:,1]] = 255
 
-        # クロージング
+        # クロージング（穴埋め）
         closed = cv2.morphologyEx(grid, cv2.MORPH_CLOSE, KERNEL)
         diff = (closed > 0) & (grid == 0)
         if not np.any(diff):
             continue
 
-        # 補間セル → s=0（中心線上）に緑点を配置
+        # 補間セル → s=0（中心線上）に緑点を配置（u:法線方向, z:高さ）
         ii, jj = np.where(diff)
         u_cent = u_min + (jj + 0.5) * GRID_RES
         z_cent = z_min + (ii + 0.5) * GRID_RES
@@ -227,15 +242,15 @@ def main():
     # 6) 出力統合（Z≤点＋緑点）
     all_pts = np.vstack([pts, green_world])
 
-    # RGB：入力にRGBがあれば維持、緑点は純緑
+    # RGB：入力にRGBがあれば維持、緑点は純緑（16bit）
     write_rgb = False
     if has_rgb_in:
-        green_rgb = np.tile(np.array([[0.0, 1.0, 0.0]]), (len(green_world), 1))
-        all_rgb = np.vstack([rgb, green_rgb])
-        all_rgb16 = (all_rgb * 65535).astype(np.uint16)
+        green_rgb16 = np.zeros((len(green_world), 3), dtype=np.uint16)
+        green_rgb16[:,1] = 65535  # pure green
+        all_rgb16 = np.vstack([rgb, green_rgb16])  # rgbは16bitのまま
         write_rgb = True
 
-    # 7) LAS出力（CRS/VLR継承）
+    # 7) LAS出力（CRS/VLR/EVLR/SRS継承）
     header = copy_header_with_metadata(las.header)
     las_out = laspy.LasData(header)
 
@@ -256,6 +271,7 @@ def main():
         las_out.blue  = all_rgb16[:,2]
     # 出力PFにRGBが無ければスキップ（強度のみLAS）
 
+    # 保存
     las_out.write(OUTPUT_LAS)
 
     if VERBOSE:

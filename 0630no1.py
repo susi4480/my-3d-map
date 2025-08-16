@@ -13,23 +13,23 @@ import laspy
 from scipy.spatial import cKDTree
 
 # === 設定 ===
-input_dir = r"C:\Users\user\Documents\lab\data\suidoubasi\floor_xyz_sita"
-output_las = r"C:\Users\user\Documents\lab\output_ply\0704_suidoubasi_floor_sita"
+input_dir = "/data/fulldata/floor_sita_xyz/"
+output_las = "/output/0725_suidoubasi_floor_sita.las"
 voxel_size = 0.25
 z_upper_limit = 3.0
-morph_radius = 18
+morph_radius = 20
 
-# === XYZ読み込み（NaN除去あり）===
+# === XYZ読み込み（NaN・不正行を除去）===
 def load_xyz_files(directory):
     all_points = []
     files = glob.glob(os.path.join(directory, "*.xyz"))
     for f in files:
         try:
-            data = np.loadtxt(f, dtype=float)
+            data = np.genfromtxt(f, dtype=float)
             if data.ndim == 1 and data.size == 3:
                 data = data.reshape(1, 3)
             elif data.ndim != 2 or data.shape[1] != 3:
-                print(f"⚠ 無効なファイル形式: {f}")
+                print(f"⚠ 無効なファイル形式: {f}（shape={data.shape}）")
                 continue
             data = data[~np.isnan(data).any(axis=1)]  # NaN除去
             all_points.append(data)

@@ -4,7 +4,7 @@ import open3d as o3d
 import matplotlib.tri as mtri
 
 input_las = "/output/0704_method9_ue.las"
-output_ply = "/output/0706_mesh_delaunay_ue.ply"
+output_ply = "/output/0706_mesh_delaunay.ply"
 
 # === 読み込みと緑抽出 ===
 las = laspy.read(input_las)
@@ -16,12 +16,19 @@ pts_navi = pts[mask]
 if len(pts_navi) == 0:
     raise RuntimeError("❌ 緑点が見つかりません")
 
-# === 2D（三角分割用）===
-xy = pts_navi[:, :2]
-z = pts_navi[:, 2]
+# === Voxelでダウンサンプリング ===
+pcd = o3d.geometry.PointCloud()
+pcd.points = o3d.utility.Vector3dVector(pts_navi)
+pcd = pcd.voxel_down_sample(voxel_size=0.2)
+xyz_down = np.asarray(pcd.points)
+xy = xyz_down[:, :2]
+z = xyz_down[:, 2]
+
+# === Delaunay三角形分割 ===
+print(f"🔼 Delaunay分割中（点数: {len(xy)}）...")
 tri = mtri.Triangulation(xy[:, 0], xy[:, 1])
 
-# === Open3D用メッシュ化 ===
+# === Open3Dメッシュ化 ===
 mesh = o3d.geometry.TriangleMesh()
 mesh.vertices = o3d.utility.Vector3dVector(np.column_stack([xy, z]))
 mesh.triangles = o3d.utility.Vector3iVector(tri.triangles)

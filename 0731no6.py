@@ -1,43 +1,45 @@
 # -*- coding: utf-8 -*-
 """
 【機能】
-- 入力LASをX方向に10m間隔でスライス
-- 各スライス内でZスライス処理（Y方向にビット列化）
-- 「1に挟まれた0」を航行可能空間として緑点出力
-- 全緑点を統合して1つのLASファイルに保存
+- X方向にオーバーラップ付きスライス（幅10m・9m刻み）
+- 各スライスで Y–Z平面を Z方向にビットマップ化（Yごと）
+- 両側に1がある連続0（間の空間）を航行可能空間（緑点）とみなす
+- 航行可能空間をLASで出力＋最近傍距離統計を表示
 """
 
 import numpy as np
 import laspy
+from scipy.spatial import cKDTree
 from tqdm import tqdm
-import os
 
-# === 入出力 ===
-INPUT_LAS = r"C:\Users\user\Documents\lab\output_ply\0725_suidoubasi_ue.las"
-OUTPUT_LAS = r"C:\Users\user\Documents\lab\output_ply\0801_gapfill_all_xslice.las"
-os.makedirs(os.path.dirname(OUTPUT_LAS), exist_ok=True)
+# === 入出力設定 ===
+INPUT_LAS = r"/output/0731_suidoubasi_ue.las"
+OUTPUT_LAS = r"/output/0731_overlap_zslice_gapspace.las"
 
 # === パラメータ ===
-Z_RES = 0.05      # Z方向ビット解像度
-Y_RES = 0.1       # Y方向分割幅
-Z_LIMIT = 3.5     # Z上限
-X_THICKNESS = 10.0  # X方向スライス幅
+Z_RES = 0.1         # Z方向ビットマップ分解能（m）
+Y_RES = 0.1         # Y方向ビン幅（m）
+Z_LIMIT = 3.5       # Z制限（m）
+X_SLICE_WIDTH = 10.0  # 各スライスの厚み（m）
+X_STEP = 9.0          # スライス開始位置の間隔（m）
 
-# === LAS読み込み＆Z制限 ===
+# === LAS読み込みとZ制限 ===
 las = laspy.read(INPUT_LAS)
 pts = np.vstack([las.x, las.y, las.z]).T
 pts = pts[pts[:, 2] <= Z_LIMIT]
+if len(pts) == 0:
+    raise RuntimeError("⚠ Z制限内の点が存在しません")
 
-# === スライス境界 ===
 x_min, x_max = pts[:, 0].min(), pts[:, 0].max()
-x_edges = np.arange(x_min, x_max + X_THICKNESS, X_THICKNESS)
+x_starts = np.arange(x_min, x_max - X_SLICE_WIDTH, X_STEP)
 
-all_green_pts = []
+navigable_pts = []
 
-for xi in tqdm(range(len(x_edges) - 1), desc="Xスライス処理"):
-    x0, x1 = x_edges[xi], x_edges[xi + 1]
-    slice_mask = (pts[:, 0] >= x0) & (pts[:, 0] < x1)
-    slice_pts = pts[slice_mask]
+# === オーバーラップ付きXスライス処理 ===
+for x0 in tqdm(x_starts, desc="Xスライス処理"):
+    x1 = x0 + X_SLICE_WIDTH
+    mask_x = (pts[:, 0] >= x0) & (pts[:, 0] < x1)
+    slice_pts = pts[mask_x]
     if len(slice_pts) == 0:
         continue
 
@@ -46,43 +48,54 @@ for xi in tqdm(range(len(x_edges) - 1), desc="Xスライス処理"):
     y_bins = np.arange(y_min, y_max + Y_RES, Y_RES)
     z_bins = np.arange(z_min, z_max + Z_RES, Z_RES)
 
-    for zi in range(len(z_bins) - 1):
-        z0, z1 = z_bins[zi], z_bins[zi + 1]
-        z_mask = (slice_pts[:, 2] >= z0) & (slice_pts[:, 2] < z1)
-        z_slice_pts = slice_pts[z_mask]
-        if len(z_slice_pts) == 0:
+    for yi in range(len(y_bins) - 1):
+        y0, y1 = y_bins[yi], y_bins[yi + 1]
+        mask_y = (slice_pts[:, 1] >= y0) & (slice_pts[:, 1] < y1)
+        yz_pts = slice_pts[mask_y]
+        if len(yz_pts) == 0:
             continue
 
-        bitmap = np.zeros(len(y_bins) - 1, dtype=np.uint8)
-        yi_indices = ((z_slice_pts[:, 1] - y_min) / Y_RES).astype(int)
-        yi_indices = yi_indices[(yi_indices >= 0) & (yi_indices < len(bitmap))]
-        bitmap[yi_indices] = 1
+        bitmap = np.zeros(len(z_bins) - 1, dtype=np.uint8)
+        zi_indices = ((yz_pts[:, 2] - z_min) / Z_RES).astype(int)
+        zi_indices = zi_indices[(zi_indices >= 0) & (zi_indices < len(bitmap))]
+        bitmap[zi_indices] = 1
 
-        # 航行可能空間の抽出（1に挟まれた0を緑点に）
+        # 両側1に挟まれた0を航行可能空間とする
         inside = False
-        for yi in range(1, len(bitmap) - 1):
-            prev1 = bitmap[yi - 1]
-            next1 = bitmap[yi + 1]
-            if prev1 == 1 and next1 == 1 and bitmap[yi] == 0:
-                y_center = (y_bins[yi] + y_bins[yi + 1]) / 2
-                z_center = (z0 + z1) / 2
+        for zi in range(1, len(bitmap) - 1):
+            if bitmap[zi - 1] == 1 and bitmap[zi + 1] == 1 and bitmap[zi] == 0:
+                inside = True
+            elif inside and bitmap[zi] == 1:
+                inside = False
+            if inside and bitmap[zi] == 0:
                 x_center = (x0 + x1) / 2
-                all_green_pts.append([x_center, y_center, z_center])
+                y_center = (y0 + y1) / 2
+                z_center = z_min + (zi + 0.5) * Z_RES
+                navigable_pts.append([x_center, y_center, z_center])
 
-# === LAS出力 ===
-if len(all_green_pts) > 0:
-    pts_np = np.array(all_green_pts)
+# === 出力LAS生成（緑）===
+if navigable_pts:
+    navigable_pts = np.array(navigable_pts)
     header = laspy.LasHeader(point_format=3, version="1.2")
-    header.offsets = pts_np.min(axis=0)
+    header.offsets = navigable_pts.min(axis=0)
     header.scales = np.array([0.001, 0.001, 0.001])
     las_out = laspy.LasData(header)
-    las_out.x = pts_np[:, 0]
-    las_out.y = pts_np[:, 1]
-    las_out.z = pts_np[:, 2]
-    las_out.red   = np.zeros(len(pts_np), dtype=np.uint16)
-    las_out.green = np.full(len(pts_np), 65535, dtype=np.uint16)
-    las_out.blue  = np.zeros(len(pts_np), dtype=np.uint16)
+    las_out.x = navigable_pts[:, 0]
+    las_out.y = navigable_pts[:, 1]
+    las_out.z = navigable_pts[:, 2]
+    las_out.red   = np.zeros(len(navigable_pts), dtype=np.uint16)
+    las_out.green = np.full(len(navigable_pts), 65535, dtype=np.uint16)
+    las_out.blue  = np.zeros(len(navigable_pts), dtype=np.uint16)
     las_out.write(OUTPUT_LAS)
-    print(f"✅ 完了：{OUTPUT_LAS}（緑点数: {len(pts_np)}）")
+
+    # === 最近傍距離の統計 ===
+    tree = cKDTree(navigable_pts)
+    dists, _ = tree.query(navigable_pts, k=2)
+    print("✅ 最近傍距離の統計:")
+    print(f"  平均距離 : {np.mean(dists[:, 1]):.4f} m")
+    print(f"  中央値   : {np.median(dists[:, 1]):.4f} m")
+    print(f"  最小距離 : {np.min(dists[:, 1]):.4f} m")
+    print(f"  最大距離 : {np.max(dists[:, 1]):.4f} m")
+    print(f"✅ 出力完了: {OUTPUT_LAS}（点数: {len(navigable_pts)}）")
 else:
     print("⚠ 航行可能空間が見つかりませんでした")

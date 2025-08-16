@@ -13,13 +13,13 @@ import open3d as o3d
 from pyproj import Transformer, CRS
 
 # === 設定 ===
-input_las_path = r"C:\Users\user\Documents\lab\output_ply\0704_suidoubasi_floor_sita.las"
-lidar_xyz_dir = r"C:\Users\user\Documents\lab\data\suidoubasi\lidar_sita"
-output_las_path = r"C:\Users\user\Documents\lab\output_ply\0704_suidoubasi_sita.las"
+input_las_path = r"/output/0725_suidoubasi_floor_ue.las"
+lidar_xyz_dir = r"/data/fulldata/lidar_ue_xyz/"
+output_las_path = r"/output/0731_suidoubasi_ue.las"
 voxel_size = 0.2
-normal_wall_z_max = 4.5
-floor_z_max = 3.2
-horizontal_threshold = 0.90
+normal_wall_z_max = 3.2
+floor_z_max = 1.1
+horizontal_threshold = 0.70
 
 # === [1] LAS 読み込み ===
 print("📥 LAS読み込み中...")
@@ -62,7 +62,7 @@ colors = np.zeros((len(points), 3), dtype=np.uint16)  # 16bit整数で格納
 
 # 分類マスクと色（16bit: 0–65535）
 colors[:] = [65535, 65535, 65535]  # 白: 未分類
-colors[(normals[:, 2] < 0.3) & (points[:, 2] < normal_wall_z_max)] = [65535, 0, 0]      # 赤: 壁
+colors[(normals[:, 2] < 0.4) & (points[:, 2] < normal_wall_z_max)] = [65535, 0, 0]      # 赤: 壁
 colors[(normals[:, 2] > horizontal_threshold) & (points[:, 2] < floor_z_max)] = [0, 0, 65535]  # 青: 床
 colors[(normals[:, 2] < 0.3) & (points[:, 2] >= normal_wall_z_max)] = [65535, 65535, 0]  # 黄: ビル
 

@@ -5,7 +5,7 @@
 2) 中心線を弧長ステップ slice_interval（例: 0.5m）で等間隔サンプリング
 3) 各サンプル点の接線に“垂直”な帯で切り出し（厚み slice_thickness = 0.2 → ±0.1m）
 4) 元点群（Z≤）のうち帯に入る点だけを集めて LAS 出力（色は変更しない）
-- CRS/VLR継承、RGB有無に自動対応
+- CRS/VLR/EVLR/SRS 継承、RGB有無に自動対応（laspy 2.x）
 """
 
 import os
@@ -13,11 +13,11 @@ import numpy as np
 import laspy
 
 # === 入出力 ===
-INPUT_LAS  = r"C:\Users\user\Documents\lab\outcome\0731_suidoubasi_ue.las"
-OUTPUT_LAS = r"C:\Users\user\Documents\lab\output_las\0808_slices_only_map.las"
+INPUT_LAS  = "/output/0731_suidoubasi_ue.las"          # 実在する入力に
+OUTPUT_LAS = "/output/0808_slices_only_map.las"   
 
 # === パラメータ ===
-Z_LIMIT         = 0.8     # [m] これ以下のみ使用（橋など上部ノイズを除去）
+Z_LIMIT         = 3.5     # [m] これ以下のみ使用（橋など上部ノイズを除去）
 BIN_Y           = 2.0     # [m] 固定Y軸スライス幅（中心線推定用）
 MIN_PTS_PER_BIN = 50      # スライス内の最低点数
 SMOOTH_WINDOW_M = 10.0    # [m] 中心線Xの移動平均（0で無効）
@@ -83,7 +83,6 @@ def resample_polyline_by_arclength(xy, step):
     out = []
     j = 0
     for s in targets:
-        # L[j] <= s <= L[j+1] となる j を探す
         while j+1 < len(L) and L[j+1] < s:
             j += 1
         if j+1 >= len(L):
@@ -108,15 +107,24 @@ def tangents_normals_from_polyline(xy):
     return t, nvec
 
 def copy_header_with_metadata(src_header):
-    """CRS/VLR含めメタデータ継承"""
-    try:
-        header = src_header.copy()
-    except AttributeError:
-        header = laspy.LasHeader(point_format=src_header.point_format, version=src_header.version)
-        header.scales  = src_header.scales.copy()
-        header.offsets = src_header.offsets.copy()
-        header.vlrs  = list(getattr(src_header, "vlrs", []))
-        header.evlrs = list(getattr(src_header, "evlrs", []))
+    """
+    laspy 2.x 向け：copy()は無いので新規ヘッダを組み立て、
+    scales/offsets/SRS/VLR/EVLRを存在する範囲で継承。
+    """
+    header = laspy.LasHeader(point_format=src_header.point_format, version=src_header.version)
+    # スケール/オフセット
+    header.scales  = src_header.scales
+    header.offsets = src_header.offsets
+    # SRS（あれば）
+    if hasattr(src_header, "srs") and src_header.srs is not None:
+        header.srs = src_header.srs
+    # VLR/EVLR（存在する場合のみ）
+    src_vlrs = getattr(src_header, "vlrs", None)
+    if src_vlrs:
+        header.vlrs.extend(src_vlrs)
+    src_evlrs = getattr(src_header, "evlrs", None)
+    if src_evlrs:
+        header.evlrs.extend(src_evlrs)
     return header
 
 def voxel_downsample(points_xyz, voxel_size):
@@ -158,7 +166,6 @@ def main():
     zmask = pts_all[:,2] <= Z_LIMIT
     pts = pts_all[zmask]
     XY  = pts[:, :2]
-    Z   = pts[:, 2]
     if has_rgb_in:
         rgb = rgb_all[zmask]
 

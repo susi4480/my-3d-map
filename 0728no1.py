@@ -3,8 +3,8 @@
 【機能】
 - LASファイルを0.5m間隔でY-Z断面スライス（±0.1m厚）
 - 各スライスに対して：
-    - Z > 3.2 除去＋ノイズ除去
-    - Y方向に5分割した5点からRayを出す
+    - Z > 3.2 除去＋ノイズ除去（空でも続行）
+    - Y方向に5分割した5点からRayを出す（空ならスキップ）
     - 航行可能空間（緑点）を生成
     - 除去した点（Z>3.2やノイズ）も戻して全体出力
 """
@@ -31,13 +31,16 @@ WATER_LEVEL = 3.5
 CLEARANCE = 1.0
 VOXEL_SIZE = 0.2
 N_RAYS = 720
-RAY_LENGTH = 50.0
+RAY_LENGTH = 60.0   # ← 3倍にしたRay長
 STEP = 0.05
 DIST_THRESH = 0.1
 SAFETY_DIST = 1.0
 
-# === Raycast（origin: 複数点）===
+# === Raycast関数（origin複数）===
 def run_raycast_multi(pts, origins):
+    if len(pts) < 3 or len(origins) == 0:
+        return np.empty((0, 3))
+
     tree = cKDTree(pts[:,1:3])
     angles = np.linspace(0, 2*np.pi, N_RAYS, endpoint=False)
     dirs = np.vstack((np.cos(angles), np.sin(angles))).T
@@ -56,8 +59,7 @@ def run_raycast_multi(pts, origins):
             if idx.size == 0:
                 continue
             i = idx[0]
-            d_hit = steps[i]
-            d_safe = max(d_hit - SAFETY_DIST, 0)
+            d_safe = max(steps[i] - SAFETY_DIST, 0)
             dy, dz = dirs[j]
             y_s, z_s = origin + np.array([dy, dz]) * d_safe
             _, ii = tree.query([y_s, z_s])
@@ -66,13 +68,12 @@ def run_raycast_multi(pts, origins):
 
     if not all_hits:
         return np.empty((0,3))
-    hits = np.array(all_hits)
 
+    hits = np.array(all_hits)
     minb = pts.min(axis=0)
     ijk = np.floor((hits - minb) / VOXEL_SIZE).astype(int)
     uidx = np.unique(ijk, axis=0)
     centers = minb + (uidx + 0.5) * VOXEL_SIZE
-
     z_lim = WATER_LEVEL + CLEARANCE
     return centers[centers[:,2] <= z_lim]
 
@@ -94,43 +95,34 @@ for i, x_center in enumerate(x_centers):
     pts_slice = pts_all[mask]
     cols_slice = cols_all[mask]
 
-    # === Z > 3.2 除去 & ノイズ除去 ===
+    # === Z > 3.2 除去 & ノイズ除去（スキップなし） ===
     z_mask = pts_slice[:,2] <= Z_CUTOFF
     pts_zcut = pts_slice[z_mask]
     cols_zcut = cols_slice[z_mask]
 
-    if len(pts_zcut) < 20:
-        print(f"⏭ スライス {i} 点数不足でスキップ")
-        continue
-
-    # ノイズ除去（LOF）
-    lof = LocalOutlierFactor(n_neighbors=20, contamination=0.02)
-    inlier_mask = lof.fit_predict(pts_zcut[:, :3]) == 1
+    inlier_mask = np.ones(len(pts_zcut), dtype=bool)
+    if len(pts_zcut) >= 10:
+        lof = LocalOutlierFactor(n_neighbors=20, contamination=0.02)
+        try:
+            inlier_mask = lof.fit_predict(pts_zcut[:, :3]) == 1
+        except:
+            pass
     pts_clean = pts_zcut[inlier_mask]
 
-    if len(pts_clean) < 20:
-        print(f"⏭ スライス {i} ノイズ除去後に点数不足でスキップ")
-        continue
-
     # === Ray origin をY方向5分割で決定 ===
-    yz = pts_clean[:,1:3]
-    y_min, y_max = yz[:,0].min(), yz[:,0].max()
-    y_splits = np.linspace(y_min, y_max, 6)
-    y_centers = (y_splits[:-1] + y_splits[1:]) / 2
-    z_median = np.median(yz[:,1])
-    origins = np.array([[y, z_median] for y in y_centers])
+    if len(pts_clean) >= 3:
+        yz = pts_clean[:,1:3]
+        y_min, y_max = yz[:,0].min(), yz[:,0].max()
+        y_splits = np.linspace(y_min, y_max, 6)
+        y_centers = (y_splits[:-1] + y_splits[1:]) / 2
+        z_median = np.median(yz[:,1])
+        origins = np.array([[y, z_median] for y in y_centers])
+    else:
+        origins = np.empty((0,2))
 
-    # === Raycastで緑点生成 ===
+    # === Raycastで緑点生成（0件でも進行） ===
     ray_pts = run_raycast_multi(pts_clean, origins)
     ray_cols = np.tile([0, 65535, 0], (len(ray_pts), 1))  # 緑
-
-    # === 除去された点を戻す ===
-    removed_mask = ~z_mask
-    pts_removed = pts_slice[removed_mask]
-    cols_removed = cols_slice[removed_mask]
-
-    removed_noise = pts_zcut[~inlier_mask]
-    cols_noise = cols_zcut[~inlier_mask]
 
     # === 統合出力 ===
     pts_out = np.vstack([pts_slice, ray_pts])

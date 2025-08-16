@@ -9,50 +9,41 @@
 - 出力LASは元ヘッダ（スケール/オフセット/CRS）を継承
 """
 
-import os
 import numpy as np
 import laspy
 import cv2
 
 # === 入出力 ===
-INPUT_LAS      = r"C:\Users\user\Documents\lab\outcome\0731_suidoubasi_ue.las"
-CENTERLINE_CSV = r"C:\Users\user\Documents\lab\data\centerline_xy.csv"  # X,Y（ヘッダなし/カンマ区切り）
-OUTPUT_LAS     = r"C:\Users\user\Documents\lab\output_las\0808_centerline_perp_10m_green.las"
+INPUT_LAS   = r"/output/0731_suidoubasi_ue.las"
+CENTERLINE_CSV = r"C:\Users\user\Documents\lab\data\centerline_xy.csv"  # X,Y（ヘッダなし/空白orカンマ区切り）
+OUTPUT_LAS  = r"C:\Users\user\Documents\lab\output_ply\0808_centerline_perp_10m_green.las"
 
-# === パラメータ ===s
-Z_LIMIT      = 1.5
+# === パラメータ ===
+Z_LIMIT      = 3.5
 GRID_RES     = 0.1          # N-Z平面ラスタ解像度[m]
 MORPH_RADIUS = 3            # クロージング半径[セル]
-SLAB_THICK   = 10.0         # 垂直スライス厚み（接線方向に±SLAB_THICK/2）[m]
+SLAB_THICK   = 10.0         # 垂直スライスの“厚み”（接線方向に±SLAB_THICK/2）[m]
 STEP_EVERY   = 1            # 何点おきに中心線をサンプリングするか（1=全点）
 MIN_PIXELS   = 50           # スライス内が少なすぎる時スキップ
 KERNEL = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2*MORPH_RADIUS+1, 2*MORPH_RADIUS+1))
 
 # === 中心線読込（X,Y） ===
 def load_centerline_xy(path):
-    # カンマ区切りCSV（ヘッダなし）を想定。頑丈めに読み込む。
-    try:
-        arr = np.loadtxt(path, delimiter=",", dtype=float)
-    except Exception:
-        arr = np.genfromtxt(path, delimiter=",", dtype=float, comments=None)
+    arr = np.loadtxt(path, delimiter=None, dtype=float)
     if arr.ndim == 1:
-        if arr.size == 2:
-            arr = arr.reshape(1, 2)
-        else:
-            raise RuntimeError(f"Unexpected centerline CSV shape: {arr.shape}")
+        arr = arr.reshape(1, -1)
     if arr.shape[1] > 2:
         arr = arr[:, :2]
-    return arr
+    return arr  # (M,2)
 
 # === 接線・法線ベクトル列を作る ===
 def centerline_tangent_normal(xy):
     # 前後差分で接線を近似、正規化
     M = xy.shape[0]
     t = np.zeros((M,2), dtype=float)
-    if M >= 2:
-        t[1:-1] = xy[2:] - xy[:-2]
-        t[0]    = xy[1] - xy[0]
-        t[-1]   = xy[-1] - xy[-2]
+    t[1:-1] = xy[2:] - xy[:-2]
+    t[0]    = xy[1] - xy[0]
+    t[-1]   = xy[-1] - xy[-2]
     # 正規化
     norm = np.linalg.norm(t, axis=1, keepdims=True) + 1e-12
     t /= norm
@@ -61,9 +52,6 @@ def centerline_tangent_normal(xy):
     return t, n
 
 # === メイン ===
-# 出力フォルダ作成
-os.makedirs(os.path.dirname(OUTPUT_LAS), exist_ok=True)
-
 # LAS読み込み
 las = laspy.read(INPUT_LAS)
 pts = np.vstack([las.x, las.y, las.z]).T
@@ -85,9 +73,9 @@ green_world = []
 # 各中心線点で垂直スライス
 half_thick = SLAB_THICK * 0.5
 for idx in range(0, len(cl), STEP_EVERY):
-    c  = cl[idx]   # 中心線位置 [X,Y]
-    ti = t[idx]    # 接線 (unit)
-    ni = n[idx]    # 法線 (unit)
+    c = cl[idx]         # 中心線位置 [X,Y]
+    ti = t[idx]         # 接線 (unit)
+    ni = n[idx]         # 法線 (unit)
 
     # XY平面で点をローカル座標へ投影：s=接線成分, u=法線成分
     dxy = pts[:, :2] - c  # (N,2)
@@ -100,7 +88,7 @@ for idx in range(0, len(cl), STEP_EVERY):
         continue
 
     slab_pts = pts[band_mask]
-    u_slab   = u[band_mask]            # 法線座標
+    u_slab   = u[band_mask]          # 法線座標
     z_slab   = slab_pts[:,2]
 
     # N-Z平面へラスタ化
@@ -131,7 +119,8 @@ for idx in range(0, len(cl), STEP_EVERY):
     u_cent = u_min + (jj + 0.5) * GRID_RES
     z_cent = z_min + (ii + 0.5) * GRID_RES
 
-    # 垂直スライス：中心線上（s=0）に置く → p = C + u*ni + 0*ti
+    # 垂直スライスなので、中心線上（s=0）に置く： p = C + u*ni + 0*ti
+    # Zはそのまま z_cent
     pxy = c + (u_cent[:, None] * ni[None, :])          # (K,2)
     pz  = z_cent[:, None]
     pw  = np.hstack([pxy, pz])                         # (K,3)
@@ -149,7 +138,7 @@ all_pts   = np.vstack([pts, green_world])
 all_rgb   = np.vstack([rgb, green_rgb])
 all_rgb16 = (all_rgb * 65535).astype(np.uint16)
 
-# ヘッダ継承（laspy互換）＋ ポイント配列を“必要数で再割当”してから代入
+# ヘッダ継承（laspy互換）
 try:
     header = las.header.copy()
 except AttributeError:
@@ -158,23 +147,12 @@ except AttributeError:
     header.offsets = las.header.offsets.copy()
 
 las_out = laspy.LasData(header)
-
-# ★★ ここが重要：points を現在の点数で確保し直す（broadcast エラー対策） ★★
-n = all_pts.shape[0]
-try:
-    las_out.points = laspy.ScaleAwarePointRecord.zeros(n, header=header)
-except AttributeError:
-    las_out.points = laspy.PointRecord.zeros(n, header=header)
-
-# 代入
 las_out.x = all_pts[:,0]
 las_out.y = all_pts[:,1]
 las_out.z = all_pts[:,2]
 las_out.red   = all_rgb16[:,0]
 las_out.green = all_rgb16[:,1]
 las_out.blue  = all_rgb16[:,2]
-
-# 保存
 las_out.write(OUTPUT_LAS)
 
 print(f"✅ 出力: {OUTPUT_LAS}")

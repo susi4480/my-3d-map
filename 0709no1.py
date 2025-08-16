@@ -10,8 +10,8 @@ import laspy
 import os
 
 # === 入出力設定 ===
-input_las = r"C:\Users\user\Documents\lab\output_ply\0704_suidoubasi_ue.las"
-output_dir = r"C:\Users\user\Documents\lab\output_ply\slice_area"
+input_las = "/data/0731_suidoubasi_ue.las"
+output_dir = "/output/slice_area_ue"
 os.makedirs(output_dir, exist_ok=True)
 
 # === スライス厚み設定 ===

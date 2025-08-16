@@ -1,46 +1,50 @@
 # -*- coding: utf-8 -*-
 """
 【機能】
-- 緑点群をボクセル化 → Signed Distance Field → マーチングキューブで外形抽出
+- LASファイルから航行可能空間（緑 [0,255,0]）だけを抽出
+- ダウンサンプリングなし
+- LAS形式で出力（CRSも保持）
 """
 
 import numpy as np
 import laspy
-import open3d as o3d
+from pyproj import CRS
 
+# === 入出力設定 ===
 input_las = "/output/0704_method9_ue.las"
-output_ply = "/output/mesh_marching_cubes.ply"
-voxel_size = 0.3  # 解像度（小さいほど高精度）
+output_las = "/output/0707_green_only_ue.las"
+crs_utm = CRS.from_epsg(32654)  # 適切なCRS（東京UTM Zone54N）
 
-# === 点群読み込みと緑抽出 ===
+# === LAS読み込みと緑点抽出 ===
 print("📥 LAS読み込み中...")
 las = laspy.read(input_las)
-pts = np.vstack([las.x, las.y, las.z]).astype(np.float32)
-cols_raw = np.vstack([las.red, las.green, las.blue]).astype(np.uint16).T
-cols = (cols_raw / 256).astype(np.uint8) if np.max(cols_raw) > 255 else cols_raw.astype(np.uint8)
-mask = (cols[:, 0] == 0) & (cols[:, 1] == 255) & (cols[:, 2] == 0)
-pts_navi = pts[mask]
+points = np.vstack([las.x, las.y, las.z]).astype(np.float64).T
+colors = np.vstack([las.red, las.green, las.blue]).astype(np.uint16).T
 
-if len(pts_navi) == 0:
-    raise RuntimeError("❌ 緑の航行可能空間が見つかりませんでした")
+# === 緑（航行可能）点の抽出 ===
+mask = (colors[:, 0] == 0) & (colors[:, 1] == 255) & (colors[:, 2] == 0)
+points_navi = points[mask]
+colors_navi = colors[mask]
 
-# === 点群をVoxel Gridに変換 → TSDF ===
-pcd = o3d.geometry.PointCloud()
-pcd.points = o3d.utility.Vector3dVector(pts_navi)
+if len(points_navi) == 0:
+    raise RuntimeError("❌ 航行可能空間（緑）が見つかりませんでした")
 
-print("🔲 Voxel化 + TSDF構築中...")
-volume = o3d.pipelines.integration.ScalableTSDFVolume(
-    voxel_length=voxel_size,
-    sdf_trunc=0.04,
-    color_type=o3d.pipelines.integration.TSDFVolumeColorType.None
-)
+print(f"✅ 航行可能点数: {len(points_navi):,}")
 
-pose = np.eye(4)
-volume.integrate(o3d.geometry.RGBDImage(), o3d.camera.PinholeCameraIntrinsic(), pose)  # 空のRGBDを使う
-volume.extract_triangle_mesh().remove_duplicated_vertices()
-mesh = volume.extract_triangle_mesh()
-mesh.compute_vertex_normals()
+# === LASヘッダー作成 ===
+header = laspy.LasHeader(point_format=3, version="1.2")
+header.scales = np.array([0.001, 0.001, 0.001])  # 精度
+header.offsets = points_navi.min(axis=0)
+header.add_crs(crs_utm)
 
-o3d.io.write_triangle_mesh(output_ply, mesh)
-print(f"🎉 マーチングキューブ出力完了: {output_ply}")
+# === LASデータ作成と保存 ===
+las_out = laspy.LasData(header)
+las_out.x = points_navi[:, 0]
+las_out.y = points_navi[:, 1]
+las_out.z = points_navi[:, 2]
+las_out.red   = colors_navi[:, 0]
+las_out.green = colors_navi[:, 1]
+las_out.blue  = colors_navi[:, 2]
 
+las_out.write(output_las)
+print(f"📤 LAS出力完了: {output_las}")

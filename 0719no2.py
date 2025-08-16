@@ -3,6 +3,7 @@
 【機能】
 floor（補間済み）とLiDARのXYZ点群を統合し、
 法線推定により「岸壁（赤）・川底（青）・ビル群（黄）」を分類し、PLY形式で保存
+※点群の中心を原点に移動してUnity等でも見えるように調整
 """
 
 import os
@@ -12,13 +13,13 @@ import open3d as o3d
 from pyproj import Transformer
 
 # === 設定 ===
-floor_xyz_dir = r"/data/las2_xyz/floor/"
-lidar_xyz_dir = r"/data/las2_xyz/lidar/"
-output_ply_path = r"/output/0720_suidoubasi.ply"
+floor_xyz_dir = r"/data/fulldata/floor/sita/"
+lidar_xyz_dir = r"/data/fulldata/lidar_sita/"
+output_ply_path = r"/output/0724_suidoubasi_centered.ply"
 
 voxel_size = 0.2
 normal_wall_z_max = 4.5
-floor_z_max = 3.2
+floor_z_max = 3.0
 horizontal_threshold = 0.90
 
 # === 座標変換器（緯度経度 → UTM Zone 54N）===
@@ -67,6 +68,11 @@ combined_pts = np.vstack([floor_pts, lidar_pts])
 pcd = o3d.geometry.PointCloud()
 pcd.points = o3d.utility.Vector3dVector(combined_pts)
 pcd = pcd.voxel_down_sample(voxel_size=voxel_size)
+
+# === [3.5] 原点に中心化 ===
+center = pcd.get_center()
+pcd.translate(-center)
+print(f"�� 点群を中心化しました（原点に移動）")
 
 # === [4] 法線推定と分類 ===
 pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=1.0, max_nn=30))

@@ -5,20 +5,19 @@
 - 各スライスで Z ≤ Z_LIMIT の点を対象にビットマップ化
 - 点が存在しない領域（free space）に複数の最大長方形を詰めて合成
 - 合成した空間から外周線を輪郭抽出（共有辺は除去される）
-- 輪郭を3D座標に復元し、PLYとOBJで保存
+- 輪郭を3D座標に復元し、緑点としてLAS保存
 """
 
 import os
 import numpy as np
 import laspy
 import cv2
-import open3d as o3d
 from tqdm import tqdm
 
 # === 入出力設定 ===
-INPUT_LAS = r"C:\Users\user\Documents\lab\output\0725_suidoubasi_ue.las"  # ←適宜変更
-OUTPUT_PLY = r"C:\Users\user\Documents\lab\output\0728_boundary_polygon.ply"
-OUTPUT_OBJ = r"C:\Users\user\Documents\lab\output\0728_boundary_polygon.obj"
+INPUT_LAS = "/output/0725_suidoubasi_ue.las"
+OUTPUT_LAS = "/output/0729_boundary_polygon.las"
+os.makedirs(os.path.dirname(OUTPUT_LAS), exist_ok=True)
 
 # === パラメータ ===
 Z_LIMIT = 3.0
@@ -93,6 +92,7 @@ for x0 in tqdm(x_bins, desc="スライス処理"):
         composite[top:top + h, left:left + w] = 255
         free_bitmap[top:top + h, left:left + w] = False
 
+    # 輪郭抽出
     contours, _ = cv2.findContours(composite, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     for cnt in contours:
         for pt in cnt:
@@ -101,11 +101,20 @@ for x0 in tqdm(x_bins, desc="スライス処理"):
             x = (x0 + x1) / 2
             all_boundary_pts.append([x, y, z])
 
-# === 出力 ===
-pcd = o3d.geometry.PointCloud()
-pcd.points = o3d.utility.Vector3dVector(np.array(all_boundary_pts))
-pcd.paint_uniform_color([0, 1, 0])  # 緑色
-o3d.io.write_point_cloud(OUTPUT_PLY, pcd)
-o3d.io.write_point_cloud(OUTPUT_OBJ, pcd)
-
-print("✅ 完了：スライスごとの境界抽出 → PLY/OBJ出力")
+# === LAS保存（緑点）
+if len(all_boundary_pts) > 0:
+    pts = np.array(all_boundary_pts)
+    header = laspy.LasHeader(point_format=3, version="1.2")
+    header.offsets = pts.min(axis=0)
+    header.scales = np.array([0.001, 0.001, 0.001])
+    las_out = laspy.LasData(header)
+    las_out.x = pts[:, 0]
+    las_out.y = pts[:, 1]
+    las_out.z = pts[:, 2]
+    las_out.red = np.zeros(len(pts), dtype=np.uint16)
+    las_out.green = np.full(len(pts), 65535, dtype=np.uint16)
+    las_out.blue = np.zeros(len(pts), dtype=np.uint16)
+    las_out.write(OUTPUT_LAS)
+    print(f"✅ 完了：LAS保存（緑点数: {len(pts)}）→ {OUTPUT_LAS}")
+else:
+    print("⚠ 出力すべき輪郭点がありませんでした")

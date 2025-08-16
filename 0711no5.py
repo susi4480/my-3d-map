@@ -14,9 +14,9 @@ import laspy
 from pyproj import Transformer
 
 # === 設定 ===
-las_path    = r"C:\Users\user\Documents\lab\output_ply\0704_suidoubasi_floor_sita_25.las"
-xyz_dir     = r"C:\Users\user\Documents\lab\data\suidoubasi\lidar_xyz_sita"
-output_path = r"C:\Users\user\Documents\lab\output_ply\0704_combined_floor_sita_2D.xyz"
+las_path    = "/output/0711_suidoubasi_floor_ue_25.las"
+xyz_dir     = "/data/suidoubasi/lidar_ue_xyz/"
+output_path = "/output/0712_combined_floor_ue_2D.xyz"
 
 z_threshold = 4.5
 utm_epsg    = "epsg:32654"

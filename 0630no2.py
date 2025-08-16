@@ -13,12 +13,12 @@ import open3d as o3d
 from pyproj import Transformer, CRS
 
 # === 設定 ===
-input_las_path = r"C:\Users\user\Documents\lab\output_ply\0704_suidoubasi_floor_sita.las"
-lidar_xyz_dir = r"C:\Users\user\Documents\lab\data\suidoubasi\lidar_sita"
-output_las_path = r"C:\Users\user\Documents\lab\output_ply\0704_suidoubasi_sita.las"
+input_las_path = r"/output/0725_suidoubasi_floor_sita.las"
+lidar_xyz_dir = r"/data/fulldata/lidar_sita_xyz/"
+output_las_path = r"/output/0725_suidoubasi_sita.las"
 voxel_size = 0.2
-normal_wall_z_max = 4.5
-floor_z_max = 3.2
+normal_wall_z_max = 3.2
+floor_z_max = 1.1
 horizontal_threshold = 0.90
 
 # === [1] LAS 読み込み ===
