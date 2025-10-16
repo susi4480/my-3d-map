@@ -10,42 +10,27 @@ import glob
 import numpy as np
 import laspy
 import open3d as o3d
-from pyproj import Transformer, CRS
+from pyproj import CRS
 
 # === 設定 ===
-input_las_path = r"/output/0725_suidoubasi_floor_sita.las"
-lidar_xyz_dir = r"/data/fulldata/lidar_sita_xyz/"
-output_las_path = r"/output/0725_suidoubasi_sita.las"
-voxel_size = 0.2
+input_las_path = r"/workspace/output/0919_floor_only_interp.las"  # 補間済み川底LAS
+lidar_xyz_dir = r"/workspace/output/0919_lidar_sita_merged_raw.las"       # LiDAR統合LAS
+output_las_path = r"/output/0929_01_500_suidoubasi_ue.las"
+voxel_size = 0.1
 normal_wall_z_max = 3.2
 floor_z_max = 1.1
-horizontal_threshold = 0.90
+horizontal_threshold = 0.6
 
 # === [1] LAS 読み込み ===
-print("📥 LAS読み込み中...")
+print("📥 川底LAS読み込み中...")
 las = laspy.read(input_las_path)
 floor_pts = np.vstack([las.x, las.y, las.z]).T
-print(f"✅ LAS点数: {len(floor_pts):,}")
+print(f"✅ 川底LAS点数: {len(floor_pts):,}")
 
-# === [2] LiDAR XYZ 読み込み & UTM変換 ===
-print("📥 LiDAR読み込み中...")
-to_utm = Transformer.from_crs("epsg:4326", "epsg:32654", always_xy=True)
-lidar_xyz_files = glob.glob(os.path.join(lidar_xyz_dir, "*.xyz"))
-
-lidar_points = []
-for path in lidar_xyz_files:
-    try:
-        data = np.loadtxt(path)
-        lon, lat, z = data[:, 1], data[:, 0], data[:, 2]
-        x, y = to_utm.transform(lon, lat)
-        lidar_points.append(np.vstack([x, y, z]).T)
-    except Exception as e:
-        print(f"⚠ LiDAR読み込み失敗: {path} → {e}")
-
-if not lidar_points:
-    raise RuntimeError("❌ 有効なLiDAR点群が見つかりませんでした")
-
-lidar_pts = np.vstack(lidar_points)
+# === [2] LiDAR LAS 読み込み ===
+print("📥 LiDAR LAS読み込み中...")
+lidar_las = laspy.read(lidar_xyz_dir)
+lidar_pts = np.vstack([lidar_las.x, lidar_las.y, lidar_las.z]).T
 print(f"✅ LiDAR点数: {len(lidar_pts):,}")
 
 # === [3] 点群統合・ダウンサンプリング ===
@@ -55,16 +40,16 @@ pcd.points = o3d.utility.Vector3dVector(combined_pts)
 pcd = pcd.voxel_down_sample(voxel_size=voxel_size)
 
 # === [4] 法線推定と分類 ===
-pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=1.0, max_nn=30))
+pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=1.0, max_nn=500))
 normals = np.asarray(pcd.normals)
 points = np.asarray(pcd.points)
 colors = np.zeros((len(points), 3), dtype=np.uint16)  # 16bit整数で格納
 
 # 分類マスクと色（16bit: 0–65535）
 colors[:] = [65535, 65535, 65535]  # 白: 未分類
-colors[(normals[:, 2] < 0.3) & (points[:, 2] < normal_wall_z_max)] = [65535, 0, 0]      # 赤: 壁
+colors[(normals[:, 2] < 0.6) & (points[:, 2] < normal_wall_z_max)] = [65535, 0, 0]      # 赤: 壁
 colors[(normals[:, 2] > horizontal_threshold) & (points[:, 2] < floor_z_max)] = [0, 0, 65535]  # 青: 床
-colors[(normals[:, 2] < 0.3) & (points[:, 2] >= normal_wall_z_max)] = [65535, 65535, 0]  # 黄: ビル
+colors[points[:, 2] >= normal_wall_z_max] = [65535, 65535, 0]  # 黄: ビル（高さのみ判定に変更）
 
 # === [5] LASとして保存 ===
 header = laspy.LasHeader(point_format=3, version="1.2")

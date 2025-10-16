@@ -11,9 +11,9 @@ import laspy
 from pyproj import CRS
 
 # === 入出力設定 ===
-floor_las_path = r"/output/0821_suidoubasi_floor_sita.las"
-lidar_las_path = r"/data/0821_merged_lidar_sita.las"
-output_las_path = r"/output/0827_suidoubasi_sita_no_color.las"
+floor_las_path = r"/output/0821_suidoubasi_floor_ue.las"
+lidar_las_path = r"/data/0821_merged_lidar_ue.las"
+output_las_path = r"/output/0827_suidoubasi_ue_no_color.las"
 
 # === [1] 川底 LAS 読み込み ===
 print("📥 川底LAS読み込み中...")

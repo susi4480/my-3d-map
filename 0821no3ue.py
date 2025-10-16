@@ -12,8 +12,8 @@ import laspy
 from pyproj import Transformer, CRS
 
 # === 入出力設定 ===
-xyz_dir = r"/data/fulldata/lidar_ue_xyz/"
-output_las_path = r"/data/0821_merged_lidar_ue.las"
+xyz_dir = r"/data/fulldata/floor_ue_xyz/"
+output_las_path = r"/data/0910_merged_floor_ue.las"
 
 # === 緯度経度 → UTM（Zone 54N）変換器 ===
 transformer = Transformer.from_crs("epsg:4326", "epsg:32654", always_xy=True)

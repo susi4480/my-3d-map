@@ -19,7 +19,7 @@ import laspy
 # === 設定 ===
 input_dir = r"/data/fulldata/floor_ue_xyz/"
 output_las = r"/output/0821no10_suidoubasi_floor_ue.las"
-voxel_size = 0.03
+voxel_size = 0.1
 z_upper_limit = 3.0
 morph_radius = 165
 sor_nb_neighbors = 20
